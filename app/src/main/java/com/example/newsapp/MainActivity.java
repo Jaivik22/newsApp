@@ -5,8 +5,13 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.drawable.BitmapDrawable;
+import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -19,11 +24,16 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.FileProvider;
+
+import com.vishnusivadas.advanced_httpurlconnection.PutData;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -40,6 +50,10 @@ public class MainActivity extends AppCompatActivity {
     ListView lv;
     private static String user_name[];
     private  static String img[];
+    private static String img_name[];
+    private String likeStatus = null;
+    private boolean isliked = false;
+    private int cpostion;
 
 
     @Override
@@ -99,14 +113,17 @@ public class MainActivity extends AppCompatActivity {
 
                     user_name = new String[ja.length()];
                     img = new String[ja.length()];
+                    img_name = new String[ja.length()];
+
 
                     for (int i = 0; i < ja.length(); i++) {
                         jo = ja.getJSONObject(i);
                         user_name[i] = jo.getString("username");;
-                        img[i] ="http://172.20.10.3/newsapp/images/" + jo.getString("photos");;
+                        img[i] ="http://172.20.10.3/newsapp/images/" + jo.getString("photos");
+                        img_name[i] = jo.getString("photos");
                     }
 
-                    myadapter adptr = new myadapter(getApplicationContext(), user_name, img);
+                    myadapter adptr = new myadapter(getApplicationContext(), user_name, img,img_name);
                     lv.setAdapter(adptr);
 
                 } catch (Exception ex) {
@@ -150,14 +167,16 @@ public class MainActivity extends AppCompatActivity {
         String ttl[];
         String dsc[];
         String rimg[];
+        String img_name[];
 
-        myadapter(Context c, String ttl[], String rimg[])
+        myadapter(Context c, String ttl[], String rimg[],String img_name[])
         {
             super(c,R.layout.row,R.id.tv1,ttl);
             context=c;
             this.ttl=ttl;
             this.dsc=dsc;
             this.rimg=rimg;
+            this.img_name = img_name;
         }
         @NonNull
         @Override
@@ -166,14 +185,69 @@ public class MainActivity extends AppCompatActivity {
             LayoutInflater inflater=(LayoutInflater)getApplicationContext().getSystemService(Context.LAYOUT_INFLATER_SERVICE);
             View row=inflater.inflate(R.layout.row,parent,false);
 
+
             ImageView img=row.findViewById(R.id.img1);
             TextView tv1=row.findViewById(R.id.tv1);
+            ImageView shareBtn =row.findViewById(R.id.shareBtn);
+            ImageView likeBtn = row.findViewById(R.id.likeBtn);
+
+
 
 
 
             tv1.setText(ttl[position]);
 
             String url=rimg[position];
+            shareBtn.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+
+                    BitmapDrawable bitmapDrawable = (BitmapDrawable) img.getDrawable();
+                    Bitmap bitmap = bitmapDrawable.getBitmap();
+                    shareImageandText(bitmap);
+
+                }
+            });
+            likeBtn.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    likeBtn.setImageResource(R.drawable.ic_baseline_thumb_up_24);
+                    likeStatus = "liked";
+                    postLike(img_name[position],likeStatus);
+                }
+
+            });
+//            checkLike(img_name[position],username,position);
+
+            Runnable runnable = new Runnable() {
+                @Override
+                public void run() {
+                    checkLike(img_name[position],username,position);
+
+                        if(position==cpostion && isliked) {
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+
+                                    likeBtn.setImageResource(R.drawable.ic_baseline_thumb_up_24);
+                                    isliked = false;
+                                }
+                            });
+                        }
+
+                    else {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                likeBtn.setImageResource(R.drawable.ic_outline_thumb_up_24);
+                            }
+                        });
+
+                    }
+                }
+            };
+            Thread thread = new Thread(runnable);
+            thread.start();
 
 
             class ImageLoadTask extends AsyncTask<Void, Void, Bitmap> {
@@ -211,6 +285,114 @@ public class MainActivity extends AppCompatActivity {
         }
 
     }
+    private void postLike(String img_name,String likeStatus){
+
+        try {
+
+            Handler handler = new Handler(Looper.myLooper());
+            handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    String[] field = new String[3];
+                    field[0] = "username";
+                    field[1] = "img_name";
+                    field[2] = "likeStatus";
+                    String[] data = new String[3];
+                    data[0] = username;
+                    data[1] = img_name;
+                    data[2] = likeStatus;
+
+
+                    PutData putData = new PutData("http://172.20.10.3/newsapp/likePost.php", "POST", field, data);
+                    putData.startPut();
+                    if (putData.onComplete()) {
+                        String result = putData.getResult();
+                        Toast.makeText(getApplicationContext(),result,Toast.LENGTH_SHORT).show();
+                    }
+                }
+            });
+
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+    }private void checkLike(String img_name, String username ,int postion){
+
+
+
+        try {
+            cpostion = postion;
+            HandlerThread handlerThread = new HandlerThread("MyHandlerThread");
+            handlerThread.start();
+            Looper looper = handlerThread.getLooper();
+            Handler handler = new Handler(looper);
+            handler.post(new Runnable() {
+                @Override
+                public void run() {
+
+                            String[] field = new String[2];
+                            field[0] = "username";
+                            field[1] = "img_name";
+                            String[] data = new String[2];
+                            data[0] = username;
+                            data[1] = img_name;
+
+
+                            PutData putData = new PutData("http://172.20.10.3/newsapp/checkLike.php", "POST", field, data);
+                            putData.startPut();
+                            if (putData.onComplete()) {
+                                String result = putData.getResult();
+                                Toast.makeText(getApplicationContext(),result,Toast.LENGTH_SHORT).show();
+                                if(result.equals("liked")){
+                                    isliked = true;
+
+
+                                }
+                            }
+
+                }
+            });
+
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+//        return isliked;
+    }
+    private void shareImageandText(Bitmap bitmap) {
+        Uri uri = getmageToShare(bitmap);
+        Intent intent = new Intent(Intent.ACTION_SEND);
+
+        // putting uri of image to be shared
+        intent.putExtra(Intent.EXTRA_STREAM, uri);
+
+        // adding text to share
+        intent.putExtra(Intent.EXTRA_TEXT, "Sharing Image");
+
+        // Add subject Here
+        intent.putExtra(Intent.EXTRA_SUBJECT, "Subject Here");
+
+        // setting type to image
+        intent.setType("image/jpg");
+
+        // calling startactivity() to share
+        startActivity(Intent.createChooser(intent, "Share Via"));
+    }
+    private Uri getmageToShare(Bitmap bitmap) {
+        File imagefolder = new File(getCacheDir(), "images");
+        Uri uri = null;
+        try {
+            imagefolder.mkdirs();
+            File file = new File(imagefolder, "shared_image.jpg");
+            FileOutputStream outputStream = new FileOutputStream(file);
+            bitmap.compress(Bitmap.CompressFormat.PNG, 90, outputStream);
+            outputStream.flush();
+            outputStream.close();
+                uri = FileProvider.getUriForFile(this, "com.limxtop.research.fileprovider", file);
+        } catch (Exception e) {
+            Toast.makeText(this, "" + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+        return uri;
+    }
+
 
 //    private void fetchImg() {
 //        Handler handler = new Handler(Looper.myLooper());

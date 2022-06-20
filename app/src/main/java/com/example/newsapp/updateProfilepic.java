@@ -126,7 +126,9 @@ public class updateProfilepic extends AppCompatActivity {
                     .setNotificationConfig(new UploadNotificationConfig())
                     .setMaxRetries(3)
                     .startUpload();
+
             Toast.makeText(getApplicationContext(),"Uploaded successfully..",Toast.LENGTH_SHORT);
+
             Intent i = new Intent(getApplicationContext(),userProfile.class);
             startActivity(i);
             finish();
